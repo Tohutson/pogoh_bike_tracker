@@ -1,37 +1,57 @@
 import requests
+import sqlite3
 from bs4 import BeautifulSoup
+from datetime import datetime
 
 url = "https://pogoh.com/system-map/"
 
+conn = sqlite3.connect("bikeshare.db")
+cursor = conn.cursor()
+cursor.execute(
+    """
+    CREATE TABLE IF NOT EXISTS stations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        station_name TEXT,
+        available_bikes INTEGER,
+        empty_docks INTEGER,
+        last_updated DATETIME,
+        UNIQUE(station_name, last_updated)
+    )
+    """
+)
+conn.commit()
 
-def scrape_bike_data():
-    response = requests.get(url)
-    if response.status_code == 200:
-        html_content = response.text
-    else:
-        print("Failed to fetch the page:", response.status_code)
+response = requests.get(url)
+if response.status_code == 200:
+    html_content = response.text
+else:
+    print("Failed to fetch the page:", response.status_code)
 
-    soup = BeautifulSoup(html_content, "lxml")
-    station_list = soup.find("ul", id="infoWind")
-    stations = []
-    for li in station_list.find_all("li"):
-        name = li.find("h5").text
-        available_bikes = int(
-            li.find_all("div", class_="infotxt")[0].find("strong").text
-        )
-        empty_docks = int(li.find_all("div", class_="infotxt")[1].find("strong").text)
+soup = BeautifulSoup(html_content, "lxml")
+station_list = soup.find("ul", id="infoWind")
 
-        stations.append(
-            {
-                "name": name,
-                "available_bikes": available_bikes,
-                "empty_docks": empty_docks,
-            }
-        )
+for li in station_list.find_all("li"):
+    station_name = li.find("h5").text
 
-    for station in stations:
-        print(station)
+    last_updated_iso = None
+    last_updated_span = li.find(
+        "span", string=lambda t: t and "last updated" in t.lower()
+    )
+    if last_updated_span:
+        time_str = last_updated_span.text.split("last updated")[-1].strip()
+        time_str = time_str.replace(" PM", "").replace(" AM", "")
+        parsed_time = datetime.strptime(time_str, "%H:%M:%S").time()
+        last_updated_dt = datetime.combine(datetime.today().date(), parsed_time)
+        last_updated_iso = last_updated_dt.strftime("%Y-%m-%d %H:%M:%S")
 
+    infotxts = li.find_all("div", class_="infotxt")
+    available_bikes, empty_docks = [int(div.find("strong").text) for div in infotxts]
 
-if __name__ == "__main__":
-    scrape_bike_data()
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO stations (station_name, available_bikes, empty_docks, last_updated)
+        VALUES (?, ?, ?, ?)
+        """,
+        (station_name, available_bikes, empty_docks, last_updated_iso),
+    )
+    conn.commit()
