@@ -1,7 +1,7 @@
 import requests
 import sqlite3
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 
 url = "https://pogoh.com/system-map/"
 
@@ -41,7 +41,9 @@ for li in station_list.find_all("li"):
         time_str = last_updated_span.text.split("last updated")[-1].strip()
         time_str = time_str.replace(" PM", "").replace(" AM", "")
         parsed_time = datetime.strptime(time_str, "%H:%M:%S").time()
-        last_updated_dt = datetime.combine(datetime.today().date(), parsed_time)
+        last_updated_dt = datetime.combine(
+            datetime.today().date(), parsed_time
+        ) - timedelta(hours=4)
         last_updated_iso = last_updated_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     infotxts = li.find_all("div", class_="infotxt")
